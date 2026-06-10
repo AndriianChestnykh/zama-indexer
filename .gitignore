@@ -1,0 +1,21 @@
+# Foundry
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+# Stray root lockfile (the Foundry project lives in contracts/; submodule pin is tracked by git)
+/foundry.lock
+
+# Node
+node_modules/
+contracts/node_modules/
+dist/
+*.log
+
+# Env / secrets — only .env.example is committed
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.DS_Store
+.idea/
