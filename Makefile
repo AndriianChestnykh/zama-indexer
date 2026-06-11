@@ -10,6 +10,7 @@
 
 SHELL := /bin/bash
 CONTRACTS := contracts
+POPULATE := populate
 FORGE_FHEVM := $(CONTRACTS)/lib/forge-fhevm
 RPC_URL ?= http://127.0.0.1:8545
 
@@ -19,7 +20,7 @@ include .env
 export
 endif
 
-.PHONY: install build test anvil host deploy seed stack clean
+.PHONY: install build test anvil host deploy seed stack stack-full populate-install populate clean
 
 ## Install Solidity dependencies. On a fresh clone: pulls the pinned forge-fhevm submodule, then
 ## fetches its soldeer dependencies (FHE.sol, OZ confidential-contracts) that remappings.txt points to.
@@ -53,6 +54,22 @@ seed:
 
 ## One-shot: host + deploy + seed (Anvil must already be running via `make anvil`).
 stack: host deploy seed
+
+## Install the TypeScript populate script's deps (run once after `make deploy`).
+populate-install:
+	cd $(POPULATE) && npm install
+
+## Populate the token with the full shield/transfer/unshield mix via the Zama SDK.
+## Unlike `seed` (shield-only), this emits confidential transfers and unshields too.
+## Requires: Anvil running, host+deploy done, and MOCK_USD_ADDRESS / CONFIDENTIAL_USD_ADDRESS
+## filled into .env. Run `make populate-install` once first.
+populate:
+	cd $(POPULATE) && npm run populate
+
+## One-shot: host + deploy + populate (the SDK-driven alternative to `stack`).
+## Note: addresses must be in .env before `populate` runs; prefer the two-step
+## `make host deploy` -> copy addresses -> `make populate` on a first run.
+stack-full: host deploy populate
 
 ## Remove build artifacts.
 clean:

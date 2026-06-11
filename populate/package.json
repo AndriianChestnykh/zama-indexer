@@ -1,0 +1,22 @@
+{
+  "name": "zama-populate",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Standalone tooling that populates the ConfidentialUSD (ERC-7984) token with a realistic shield/transfer/unshield mix via the Zama SDK, so the indexer has events to read.",
+  "scripts": {
+    "populate": "tsx src/populate.ts"
+  },
+  "dependencies": {
+    "@tanstack/query-core": "^5.59.0",
+    "@zama-fhe/sdk": "3.0.1",
+    "dotenv": "^16.4.5",
+    "ethers": "^6.13.0",
+    "viem": "^2.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
