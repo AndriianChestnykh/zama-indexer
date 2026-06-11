@@ -1,0 +1,22 @@
+{
+  "name": "zama-indexer",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Ponder indexer + HTTP API for the ConfidentialUSD (ERC-7984) token. One process indexes the chain (polling) and serves the API; right now only Ponder's built-in health checks are exposed.",
+  "scripts": {
+    "dev": "ponder dev",
+    "start": "ponder start",
+    "codegen": "ponder codegen",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "hono": "^4.12.25",
+    "ponder": "^0.16.6",
+    "viem": "^2.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}

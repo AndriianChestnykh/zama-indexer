@@ -1,4 +1,4 @@
-// The three actors in the seed scenario. user1/user2 sign transactions; user3 is
+// The three actors in the populate scenario. user1/user2 sign transactions; user3 is
 // the "indexer holder" — it only ever *receives* confidential transfers and never
 // initiates anything itself.
 import { Wallet } from "ethers";

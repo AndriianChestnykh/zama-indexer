@@ -1,9 +1,10 @@
 // Populate ConfidentialUSD with the full shield / confidential-transfer / unshield mix
 // from implementation-plan.md §1.3, so the indexer has a realistic event history to read.
 //
-// Unlike contracts/script/Seed.s.sol (shield-only — a Forge broadcast script can't carry
-// the per-tx FHE handles that transfers/unshields need), this runs against the live local
-// stack via the Zama SDK, which builds fresh encrypted inputs and decryption proofs per tx.
+// This is a TypeScript script, not a Forge script: a Forge broadcast script can't carry the
+// per-tx FHE handles that transfers/unshields need (it would bake in simulation-time handles
+// that don't match the on-chain ones). Instead this runs against the live local stack via the
+// Zama SDK, which builds fresh encrypted inputs and decryption proofs per tx.
 //
 // Prereqs: Anvil up (`make anvil`), `make host && make deploy` done, and the printed
 // MOCK_USD_ADDRESS / CONFIDENTIAL_USD_ADDRESS copied into the repo-root .env.

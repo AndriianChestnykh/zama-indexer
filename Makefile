@@ -2,7 +2,7 @@
 #
 # Typical first run (in two terminals):
 #   make anvil          # terminal 1: start the local node (keep running)
-#   make stack          # terminal 2: materialize host contracts, deploy token, seed events
+#   make stack          # terminal 2: materialize host contracts, deploy token
 #
 # Then copy the printed MOCK_USD_ADDRESS / CONFIDENTIAL_USD_ADDRESS into .env.
 #
@@ -11,6 +11,7 @@
 SHELL := /bin/bash
 CONTRACTS := contracts
 POPULATE := populate
+INDEXER := indexer
 FORGE_FHEVM := $(CONTRACTS)/lib/forge-fhevm
 RPC_URL ?= http://127.0.0.1:8545
 
@@ -20,7 +21,7 @@ include .env
 export
 endif
 
-.PHONY: install build test anvil host deploy seed stack stack-full populate-install populate clean
+.PHONY: install build test anvil host deploy stack stack-full populate-install populate indexer-install indexer clean
 
 ## Install Solidity dependencies. On a fresh clone: pulls the pinned forge-fhevm submodule, then
 ## fetches its soldeer dependencies (FHE.sol, OZ confidential-contracts) that remappings.txt points to.
@@ -48,28 +49,37 @@ host:
 deploy:
 	cd $(CONTRACTS) && forge script script/DeployToken.s.sol:DeployToken --rpc-url "$(RPC_URL)" --broadcast
 
-## Shield toy balances to seed accounts so the indexer has events to read.
-seed:
-	cd $(CONTRACTS) && forge script script/Seed.s.sol:Seed --rpc-url "$(RPC_URL)" --broadcast
-
-## One-shot: host + deploy + seed (Anvil must already be running via `make anvil`).
-stack: host deploy seed
+## One-shot: host + deploy (Anvil must already be running via `make anvil`).
+## Prints the MOCK_USD_ADDRESS / CONFIDENTIAL_USD_ADDRESS to copy into .env. Run `make populate`
+## afterwards (once addresses are in .env) to emit events for the indexer to read.
+stack: host deploy
 
 ## Install the TypeScript populate script's deps (run once after `make deploy`).
 populate-install:
 	cd $(POPULATE) && npm install
 
 ## Populate the token with the full shield/transfer/unshield mix via the Zama SDK.
-## Unlike `seed` (shield-only), this emits confidential transfers and unshields too.
+## Self-contained: does its own shields, then emits confidential transfers and unshields.
 ## Requires: Anvil running, host+deploy done, and MOCK_USD_ADDRESS / CONFIDENTIAL_USD_ADDRESS
 ## filled into .env. Run `make populate-install` once first.
 populate:
 	cd $(POPULATE) && npm run populate
 
-## One-shot: host + deploy + populate (the SDK-driven alternative to `stack`).
+## One-shot: host + deploy + populate (`stack` plus the SDK-driven event mix).
 ## Note: addresses must be in .env before `populate` runs; prefer the two-step
 ## `make host deploy` -> copy addresses -> `make populate` on a first run.
 stack-full: host deploy populate
+
+## Install the Ponder indexer's deps (run once).
+indexer-install:
+	cd $(INDEXER) && npm install
+
+## Run the Ponder indexer + HTTP API (one process: indexes the chain AND serves the API).
+## Serves health checks on http://localhost:42069 (/health, /ready, /status, /metrics).
+## Requires: Anvil running, host+deploy done, and CONFIDENTIAL_USD_ADDRESS filled into .env.
+## Run `make indexer-install` once first. (Optionally `make populate` first for richer events.)
+indexer:
+	cd $(INDEXER) && npm run dev
 
 ## Remove build artifacts.
 clean:
