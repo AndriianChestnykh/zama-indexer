@@ -1,0 +1,30 @@
+# Postgres for the Ponder indexer (indexer/).
+#
+# The indexer itself still runs on the host (`make indexer`); only its database lives in Docker.
+# Ponder uses this Postgres whenever DATABASE_URL is set (see .env) and falls back to its embedded
+# PGLite store otherwise.
+#
+#   make db-up      # start Postgres, wait until it's healthy
+#   make db-down    # stop it (data is preserved in the named volume)
+#   make db-reset   # stop AND drop the volume (clean re-sync from INDEXER_START_BLOCK)
+#   make db-logs    # tail the Postgres logs
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: zama-indexer-postgres
+    environment:
+      POSTGRES_USER: ponder
+      POSTGRES_PASSWORD: ponder
+      POSTGRES_DB: zama_indexer
+    ports:
+      - "5432:5432"
+    volumes:
+      - zama-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ponder -d zama_indexer"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+volumes:
+  zama-pgdata:

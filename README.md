@@ -64,6 +64,7 @@ Run the indexer + API service (needs Anvil up, the token deployed, and
 
 ```bash
 make indexer-install   # once: install indexer/ (Ponder) deps
+make db-up             # start the Dockerized Postgres (waits until healthy)
 make indexer           # ponder dev — indexes the chain AND serves the API in one process
 
 # Health checks (the only endpoints for now):
@@ -71,6 +72,10 @@ curl localhost:42069/health   # 200 once the process is up
 curl localhost:42069/ready    # 200 once historical sync completes
 curl localhost:42069/status   # JSON indexing progress
 ```
+
+The indexer persists to Postgres (run in Docker via `docker-compose.yml`) — `DATABASE_URL` in
+`.env` points at it. `make db-down` stops it (data preserved); `make db-reset` drops the volume for
+a clean re-sync. Unset `DATABASE_URL` to fall back to Ponder's embedded PGLite store.
 
 > The deploy target reads keys and addresses from `.env`. The `Makefile` loads `.env` and exports
 > it into the environment before `cd contracts && forge script …`, so Forge sees the variables even

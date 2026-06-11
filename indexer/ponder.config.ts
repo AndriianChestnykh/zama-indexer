@@ -7,7 +7,8 @@
 //
 // Config/secrets come from the SAME repo-root `.env` the Makefile and `populate/` already use,
 // loaded here with the same dotenv pattern as `populate/src/config.ts` (rather than a duplicate
-// `indexer/.env.local`). Ponder uses PGLite by default for storage — no DATABASE_URL needed.
+// `indexer/.env.local`). Storage is Postgres: Ponder auto-selects it when DATABASE_URL is set
+// (see repo-root .env + docker-compose.yml; `make db-up`), falling back to embedded PGLite if not.
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config as loadEnv } from "dotenv";

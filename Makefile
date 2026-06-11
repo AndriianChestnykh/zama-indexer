@@ -21,7 +21,7 @@ include .env
 export
 endif
 
-.PHONY: install build test anvil host deploy stack stack-full populate-install populate indexer-install indexer clean
+.PHONY: install build test anvil host deploy stack stack-full populate-install populate db-up db-down db-reset db-logs indexer-install indexer clean
 
 ## Install Solidity dependencies. On a fresh clone: pulls the pinned forge-fhevm submodule, then
 ## fetches its soldeer dependencies (FHE.sol, OZ confidential-contracts) that remappings.txt points to.
@@ -70,14 +70,32 @@ populate:
 ## `make host deploy` -> copy addresses -> `make populate` on a first run.
 stack-full: host deploy populate
 
+## Start the Dockerized Postgres the indexer persists to; blocks until it's healthy.
+## The connection string lives in .env (DATABASE_URL) and matches docker-compose.yml.
+db-up:
+	docker compose up -d --wait postgres
+
+## Stop Postgres (the named volume / data is preserved across restarts).
+db-down:
+	docker compose down
+
+## Stop Postgres AND drop its volume — forces a clean re-sync from INDEXER_START_BLOCK.
+db-reset:
+	docker compose down -v
+
+## Tail the Postgres logs.
+db-logs:
+	docker compose logs -f postgres
+
 ## Install the Ponder indexer's deps (run once).
 indexer-install:
 	cd $(INDEXER) && npm install
 
 ## Run the Ponder indexer + HTTP API (one process: indexes the chain AND serves the API).
 ## Serves health checks on http://localhost:42069 (/health, /ready, /status, /metrics).
-## Requires: Anvil running, host+deploy done, and CONFIDENTIAL_USD_ADDRESS filled into .env.
-## Run `make indexer-install` once first. (Optionally `make populate` first for richer events.)
+## Requires: Postgres up (`make db-up`), Anvil running, host+deploy done, and
+## CONFIDENTIAL_USD_ADDRESS filled into .env. Run `make indexer-install` once first.
+## (Optionally `make populate` first for richer events.)
 indexer:
 	cd $(INDEXER) && npm run dev
 
