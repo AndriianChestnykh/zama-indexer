@@ -2,9 +2,9 @@
 
 ## What I composed vs. wrote
 
-**Ponder** was chosen as the indexing library because it has event handlers, schema, build-in Postgres support, pagination, historical and realtime blockchain data polling.
-
-**Hono** was chosen a as web server. It is embedded into Ponder and conveniently exposes web APIs.
+- **Ponder** was chosen as the indexing library because it has event handlers, schema, build-in Postgres support, pagination, historical and realtime blockchain data polling.
+- **Hono** web server. It is embedded into Ponder and conveniently exposes web APIs.
+- **ERC7984ERC20Wrapper** was chosen as the confidential token implementation (seed the brief pushbacks below)
 
 I wrote myself:
 - Database schema and indexer: hand written myself in `indexer-impl-task.md` (no LLM help). Used as an LLM input to create `implmentation-plan.md`
@@ -13,17 +13,12 @@ I wrote myself:
 - `populate script`: It is a TypeScript that I use to populate confidential token with some test data including confidential transactions.
 - `grant script`: It is a TypeScript that I use to grant a ACL access from users to indexer holder. Useful for testing the backfill flow and demo.
 
-**ERC7984ERC20Wrapper** was chosen as the confidential token implementation (seed the brief pushbacks below)
-
 ## What I cut
 
-There is no retry scheduler for `pending` handles — they are only re-tried on the next `DelegatedForUserDecryption` event;
-
-Rate-limiting and authentication on the read API were cut. 
-
-Throttling on the Zama deryption API calls was cut.
-
-The `populate` scenario and Quick Start guide only tests the local fhEVM stack; there is no Sepolia support yet (though Sepolia is not mandatory in the brief but just an option)
+- There is no retry scheduler for `pending` handles — they are only re-tried on the next `DelegatedForUserDecryption` event;
+- Rate-limiting and authentication on the read API were cut. 
+- Throttling on the Zama deryption API calls was cut.
+- The `populate`, `grant` scenarious and Quick Start guide only tests the local fhEVM stack; there is no Sepolia support yet (though Sepolia is not mandatory in the brief but just an option)
 
 ## Where I'd push back on the brief
 
@@ -31,8 +26,7 @@ I used confidential token based on `ERC7984ERC20Wrapper` rather than `ERC7984` t
 
 ## Weakest point under partner load
 
-The lookup in `GET /v1/addresses/:address/transactions` has one extra `SELECT` per row per page (N+1) — would be the first thing to break under load; 
-Loading 10K transactions and would probably prove it to be a bottleneck. I would fix it with some `JOIN` lookup in a plain SQL query or some baching via ORM.
+- The lookup in `GET /v1/addresses/:address/transactions` has one extra `SELECT` per row per page (N+1) — would be the first thing to break under load; Loading 10K transactions and would probably prove it to be a bottleneck. I would fix it with some `JOIN` lookup in a plain SQL query or some baching via ORM.
 
 ## What I'd do first with four more hours
 
@@ -59,7 +53,7 @@ Errors introduced:
 - The Claude Code introduced denormalisation to the DB schema: the cleartext was duplicated in `balance` or `transactions` tables along with the `fhe_handle` table
 - Subtle thing: Claude used `dotenv` package instead of using Node.Js native API to read environment variables (yet to fix)
 
-## Out-of-time so not completed
+## Out-of-time / not completed
 
 - No happy-path and negative path tests at the moment.
 - No SDK feedback at the moment.
