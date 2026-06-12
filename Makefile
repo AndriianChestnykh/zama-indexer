@@ -11,6 +11,7 @@
 SHELL := /bin/bash
 CONTRACTS := contracts
 POPULATE := populate
+GRANT := grant
 INDEXER := indexer
 FORGE_FHEVM := $(CONTRACTS)/lib/forge-fhevm
 RPC_URL ?= http://127.0.0.1:8545
@@ -21,7 +22,7 @@ include .env
 export
 endif
 
-.PHONY: install build test anvil host deploy stack stack-full populate-install populate db-up db-down db-reset db-logs indexer-install indexer clean
+.PHONY: install build test anvil host deploy stack stack-full populate-install populate grant-install grant db-up db-down db-reset db-logs indexer-install indexer clean
 
 ## Install Solidity dependencies. On a fresh clone: pulls the pinned forge-fhevm submodule, then
 ## fetches its soldeer dependencies (FHE.sol, OZ confidential-contracts) that remappings.txt points to.
@@ -64,6 +65,17 @@ populate-install:
 ## filled into .env. Run `make populate-install` once first.
 populate:
 	cd $(POPULATE) && npm run populate
+
+## Install the grant tool's deps (run once).
+grant-install:
+	cd $(GRANT) && npm install
+
+## Delegate user-decryption rights to the indexer holder, so the indexer backfills cleartext for
+## amounts it previously could not read. Independent of `populate` — run it whenever, after deploy.
+## Usage: `make grant` (Alice grants), `make grant ARGS=bob`, `make grant ARGS=0x<privkey>`,
+##        `make grant ARGS="alice --days=30"`. Run `make grant-install` once first.
+grant:
+	cd $(GRANT) && npm run grant -- $(ARGS)
 
 ## One-shot: host + deploy + populate (`stack` plus the SDK-driven event mix).
 ## Note: addresses must be in .env before `populate` runs; prefer the two-step

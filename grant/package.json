@@ -1,0 +1,20 @@
+{
+  "name": "zama-grant",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Standalone tool that delegates ERC-7984 user-decryption rights to the indexer holder via the fhEVM ACL, so the indexer can backfill cleartext for amounts it previously could not decrypt. Independent of populate/.",
+  "scripts": {
+    "grant": "tsx src/grant.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "ethers": "^6.13.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
