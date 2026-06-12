@@ -50,10 +50,6 @@ There may be a reason to onboard some fault-tolerant scheduling and queue mechan
 
 Note: there are moto do like rate-limiting, authentication, multi-token support, etc, but it will be out of 4 hours scope.
 
-## SDK feedback
-
-No SDK feedback at the moment.
-
 ## AI assistance
 
 I used Claude Code throughout: architecture design, scaffolding Ponder config and schema, writing the Decryptor class, and debugging the `balanceClient` issue, check the codebase alignment with the intital task description.
@@ -62,3 +58,8 @@ Errors introduced:
 - Identified during the `grant` script tests: it initially generated the balance refresh logic reading the balance handle at the **event's pinned block** (`context.client.readContract`) rather than the latest block, which caused the stored handle to be stale on the forge-fhevm stack (the executor assigns a new handle each time `confidentialBalanceOf` is called, so the historical read returns a handle that no longer maps to any live ACL entry and can never be decrypted). I caught this when querying the balance endpoint always returned `encrypted: true` even for the holder, then traced it to the handle mismatch and switched to a dedicated `balanceClient` that always reads at latest.
 - The Claude Code introduced denormalisation to the DB schema: the cleartext was duplicated in `balance` or `transactions` tables along with the `fhe_handle` table
 - Subtle thing: Claude used `dotenv` package instead of using Node.Js native API to read environment variables (yet to fix)
+
+## Out-of-time so not completed
+
+- No happy-path and negative path tests at the moment.
+- No SDK feedback at the moment.

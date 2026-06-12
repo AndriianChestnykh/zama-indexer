@@ -17,10 +17,7 @@ Foundry project itself lives in `contracts/`.
 
 | Path | Role |
 |------|------|
-| `contracts/src/MockUSD.sol` | Plain ERC-20 (6 decimals, open faucet) — the cleartext underlying asset. |
-| `contracts/src/ConfidentialUSD.sol` | The watched token: `ERC7984ERC20Wrapper` over MockUSD (`cUSD`). |
-| `contracts/script/DeployToken.s.sol` | Deploys both contracts. |
-| `contracts/test/ConfidentialUSD.t.sol` | Happy-path (shield → transfer → decrypt) + negative (no rights → denied). |
+| `contracts/` | Foundry project: `MockUSD` (plain ERC-20 underlying) + `ConfidentialUSD` (`ERC7984ERC20Wrapper`, the watched token), a deploy script, and a happy-path / negative test suite. |
 | `populate/` | TypeScript script that drives the Zama SDK to emit the full shield/transfer/unshield mix. |
 | `grant/` | Standalone tool that delegates decrypt rights to the indexer holder (the backfill demo). |
 | `indexer/` | Ponder indexer + HTTP API (one process): decrypts amounts and serves balance/transaction/health endpoints. |
@@ -47,19 +44,19 @@ resolves through `FHEVMExecutor.plaintexts(handle)` to its cleartext value.)
 
 Requires [Foundry](https://book.getfoundry.sh/) (`anvil`, `forge`, `cast`). All commands run from the repo root.
 
-**1. Install dependencies and create your `.env`:**
+**1. Install Foundry dependencies and run the Anvil node:**
 
 ```bash
 make install          # pull the pinned forge-fhevm submodule + its soldeer deps
 cp .env.example .env  # toy Anvil keys; never put real keys here
+make anvil            # Local node (keep running)
 ```
 
-**2. Start the local node and deploy the token** (two terminals):
+**2. Deploy fhEVM host contracts and the token:**
 
 ```bash
-make anvil            # Terminal 1 — local node (keep running)
-make stack            # Terminal 2 — host + deploy (prints token addresses)
-# then copy the printed MOCK_USD_ADDRESS / CONFIDENTIAL_USD_ADDRESS into .env
+make stack            # deploys fhEVM host contracts + token (prints addresses)
+# copy the printed MOCK_USD_ADDRESS / CONFIDENTIAL_USD_ADDRESS into .env
 ```
 
 **3. Populate the token** with a shield / confidential-transfer / unshield mix, so the indexer has
@@ -70,12 +67,6 @@ make populate-install   # once: install populate/ deps
 make populate           # 3 shields + 27 confidential transfers + 3 unshields via the Zama SDK
 ```
 
-It produces the scenario from `indexer-impl-task.md`: user1 (alice) — 2 shields, 5 spends → user2,
-7 spends → user3, 1 unshield; user2 (bob) — 1 shield, 5 spends → user3, 10 spends → user1, 2 unshields;
-user3 (the indexer holder) only receives. Each unshield is asserted to have released the underlying mUSD
-(the 2-step `unwrap` → `finalizeUnwrap` actually completed). It is self-contained — it does its own
-shields — and only requires `make host && make deploy` done with the printed addresses copied into `.env`.
-
 **4. Run the indexer + API service** — one process indexes the chain *and* serves the API:
 
 ```bash
@@ -83,6 +74,15 @@ make indexer-install   # once: install indexer/ (Ponder) deps
 make db-up             # start the Dockerized Postgres (waits until healthy)
 make indexer           # ponder dev — indexes the chain and serves on localhost:42069
 ```
+It produces the scenario from `indexer-impl-task.md`:
+
+| Actor | Shields | Sends | Receives | Unshields |
+|-------|---------|-------|----------|-----------|
+| alice (user1) | 2 | 5 → bob, 7 → holder | — | 1 |
+| bob (user2) | 1 | 5 → holder, 10 → alice | — | 2 |
+| holder (user3) | — | — | from alice + bob | — |
+
+Each unshield is asserted to have released the underlying mUSD (the 2-step `unwrap` → `finalizeUnwrap` actually completed).
 
 **5. Query the read API** (using `HOLDER_ADDRESS` from `.env` as the example):
 
@@ -140,7 +140,7 @@ re-sync. Unset `DATABASE_URL` to fall back to Ponder's embedded PGLite store.
 
 ## Why populate is a TypeScript script (a forge-script footgun)
 
-The event mix (`make populate`, step 3 above) is driven by a TypeScript script that calls the
+The event mix (`make populate`, step 3) is driven by a TypeScript script that calls the
 `@zama-fhe/sdk`, not a Forge script. A Forge *broadcast* script simulates the whole run before sending,
 so any tx whose calldata references an FHE handle produced by an earlier tx (e.g.
 `confidentialTransfer(to, balanceHandle)`) captures the **simulation-time** handle, which doesn't match
