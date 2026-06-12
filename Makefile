@@ -1,12 +1,12 @@
 # Local fhEVM stack runbook for the confidential indexer.
 #
 # Typical first run (in two terminals):
-#   make anvil          # terminal 1: start the local node (keep running)
-#   make stack          # terminal 2: materialize host contracts, deploy token
+#   make anvil                     # terminal 1: start the local node (keep running)
+#   make fhevm-and-token-deploy    # terminal 2: materialize host contracts, deploy token
 #
 # Then copy the printed MOCK_USD_ADDRESS / CONFIDENTIAL_USD_ADDRESS into .env.
 #
-# Requires: foundry (anvil/forge/cast). Run `make install` once after cloning.
+# Requires: foundry (anvil/forge/cast). Run `make fhevm-install` once after cloning.
 
 SHELL := /bin/bash
 CONTRACTS := contracts
@@ -22,11 +22,11 @@ include .env
 export
 endif
 
-.PHONY: install build test anvil host deploy stack stack-full populate-install populate grant-install grant db-up db-down db-reset db-logs indexer-install indexer clean
+.PHONY: fhevm-install build test anvil fhevm-deploy token-deploy fhevm-and-token-deploy stack-full populate-install populate grant-install grant db-up db-down db-reset db-logs indexer-install indexer clean
 
 ## Install Solidity dependencies. On a fresh clone: pulls the pinned forge-fhevm submodule, then
 ## fetches its soldeer dependencies (FHE.sol, OZ confidential-contracts) that remappings.txt points to.
-install:
+fhevm-install:
 	git submodule update --init --recursive
 	cd $(FORGE_FHEVM) && forge soldeer install
 
@@ -43,17 +43,17 @@ anvil:
 	anvil
 
 ## Materialize the fhEVM host contracts (ACL/Executor/InputVerifier/KMSVerifier) onto Anvil.
-host:
+fhevm-deploy:
 	cd $(FORGE_FHEVM) && ./deploy-local.sh --rpc-url "$(RPC_URL)"
 
 ## Deploy MockUSD + ConfidentialUSD. Prints addresses to put in .env.
-deploy:
+token-deploy:
 	cd $(CONTRACTS) && forge script script/DeployToken.s.sol:DeployToken --rpc-url "$(RPC_URL)" --broadcast
 
 ## One-shot: host + deploy (Anvil must already be running via `make anvil`).
 ## Prints the MOCK_USD_ADDRESS / CONFIDENTIAL_USD_ADDRESS to copy into .env. Run `make populate`
 ## afterwards (once addresses are in .env) to emit events for the indexer to read.
-stack: host deploy
+fhevm-and-token-deploy: fhevm-deploy token-deploy
 
 ## Install the TypeScript populate script's deps (run once after `make deploy`).
 populate-install:
@@ -77,10 +77,10 @@ grant-install:
 grant:
 	cd $(GRANT) && npm run grant -- $(ARGS)
 
-## One-shot: host + deploy + populate (`stack` plus the SDK-driven event mix).
+## One-shot: host + deploy + populate (`fhevm-and-token-deploy` plus the SDK-driven event mix).
 ## Note: addresses must be in .env before `populate` runs; prefer the two-step
-## `make host deploy` -> copy addresses -> `make populate` on a first run.
-stack-full: host deploy populate
+## `make fhevm-deploy token-deploy` -> copy addresses -> `make populate` on a first run.
+stack-full: fhevm-deploy token-deploy populate
 
 ## Start the Dockerized Postgres the indexer persists to; blocks until it's healthy.
 ## The connection string lives in .env (DATABASE_URL) and matches docker-compose.yml.

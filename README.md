@@ -47,7 +47,7 @@ Requires [Foundry](https://book.getfoundry.sh/) (`anvil`, `forge`, `cast`). All 
 **1. Install Foundry dependencies and run the Anvil node:**
 
 ```bash
-make install          # pull the pinned forge-fhevm submodule + its soldeer deps
+make fhevm-install    # pull the pinned forge-fhevm submodule + its soldeer deps
 cp .env.example .env  # toy Anvil keys; never put real keys here
 make anvil            # Local node (keep running)
 ```
@@ -55,7 +55,7 @@ make anvil            # Local node (keep running)
 **2. Deploy fhEVM host contracts and the token:**
 
 ```bash
-make stack            # deploys fhEVM host contracts + token (prints addresses)
+make fhevm-and-token-deploy   # deploys fhEVM host contracts + token (prints addresses)
 # copy the printed MOCK_USD_ADDRESS / CONFIDENTIAL_USD_ADDRESS into .env
 ```
 

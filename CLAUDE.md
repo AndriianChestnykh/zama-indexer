@@ -14,12 +14,12 @@ All commands run from the **repo root** (the `Makefile` loads `.env` and exports
 
 ```bash
 # One-time setup
-make install              # git submodule + soldeer deps for forge-fhevm
+make fhevm-install        # git submodule + soldeer deps for forge-fhevm
 cp .env.example .env      # fill in MOCK_USD_ADDRESS / CONFIDENTIAL_USD_ADDRESS after deploy
 
 # Local stack (two terminals)
 make anvil                # Terminal 1: local Anvil node, chainId 31337
-make stack                # Terminal 2: materialize fhEVM host contracts + deploy token
+make fhevm-and-token-deploy   # Terminal 2: materialize fhEVM host contracts + deploy token
 
 # Build / test
 make build                # forge build
