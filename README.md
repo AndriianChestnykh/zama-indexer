@@ -22,8 +22,9 @@ Foundry project itself lives in `contracts/`.
 | `contracts/script/DeployToken.s.sol` | Deploys both contracts. |
 | `contracts/test/ConfidentialUSD.t.sol` | Happy-path (shield → transfer → decrypt) + negative (no rights → denied). |
 | `populate/` | TypeScript script that drives the Zama SDK to emit the full shield/transfer/unshield mix. |
+| `grant/` | Standalone tool that delegates decrypt rights to the indexer holder (the backfill demo). |
 | `indexer/` | Ponder indexer + HTTP API (one process): decrypts amounts and serves balance/transaction/health endpoints. |
-| `Makefile` | Runbook targets (`install`, `test`, `anvil`, `stack`, `populate`, `indexer`, …). |
+| `Makefile` | Runbook targets (`install`, `test`, `anvil`, `stack`, `populate`, `grant`, `indexer`, …). |
 
 Inside `indexer/`: `ponder.schema.ts` (tables), `src/index.ts` (event handlers), `src/decryptor.ts`
 (the Zama-SDK decryption core), `src/api/index.ts` (read API), `src/logic.ts` + `test/` (pure helpers
@@ -46,36 +47,44 @@ resolves through `FHEVMExecutor.plaintexts(handle)` to its cleartext value.)
 
 Requires [Foundry](https://book.getfoundry.sh/) (`anvil`, `forge`, `cast`). All commands run from the repo root.
 
+**1. Install dependencies and create your `.env`:**
+
 ```bash
 make install          # pull the pinned forge-fhevm submodule + its soldeer deps
 cp .env.example .env  # toy Anvil keys; never put real keys here
+```
 
-# Terminal 1 — local node (keep running):
-make anvil
+**2. Start the local node and deploy the token** (two terminals):
 
-# Terminal 2 — bring up the stack:
-make stack            # = host + deploy (prints token addresses)
+```bash
+make anvil            # Terminal 1 — local node (keep running)
+make stack            # Terminal 2 — host + deploy (prints token addresses)
 # then copy the printed MOCK_USD_ADDRESS / CONFIDENTIAL_USD_ADDRESS into .env
 ```
 
-Run the tests:
+**3. Populate the token** with a shield / confidential-transfer / unshield mix, so the indexer has
+events to read:
 
 ```bash
-make test                       # Solidity: forge test -vv, inside contracts/ (spins up host contracts in-process)
-cd indexer && npm test          # TypeScript: vitest — happy path + unauthorized-not-dropped
+make populate-install   # once: install populate/ deps
+make populate           # 3 shields + 27 confidential transfers + 3 unshields via the Zama SDK
 ```
 
-Run the indexer + API service (needs Anvil up, the token deployed, and
-`CONFIDENTIAL_USD_ADDRESS` in `.env`; run `make populate` first so there are events to read):
+It produces the scenario from `indexer-impl-task.md`: user1 (alice) — 2 shields, 5 spends → user2,
+7 spends → user3, 1 unshield; user2 (bob) — 1 shield, 5 spends → user3, 10 spends → user1, 2 unshields;
+user3 (the indexer holder) only receives. Each unshield is asserted to have released the underlying mUSD
+(the 2-step `unwrap` → `finalizeUnwrap` actually completed). It is self-contained — it does its own
+shields — and only requires `make host && make deploy` done with the printed addresses copied into `.env`.
+
+**4. Run the indexer + API service** — one process indexes the chain *and* serves the API:
 
 ```bash
 make indexer-install   # once: install indexer/ (Ponder) deps
 make db-up             # start the Dockerized Postgres (waits until healthy)
-make indexer           # ponder dev — indexes the chain AND serves the API in one process
+make indexer           # ponder dev — indexes the chain and serves on localhost:42069
 ```
 
-The service listens on `localhost:42069`. The partner-facing read API (using `HOLDER_ADDRESS` from
-`.env` as the example):
+**5. Query the read API** (using `HOLDER_ADDRESS` from `.env` as the example):
 
 ```bash
 H=0x90F79bf6EB2c4f870365E785982E1f101E93b906   # the indexer holder
@@ -92,14 +101,42 @@ curl "localhost:42069/v1/health"
 
 Ponder's built-in `/health`, `/ready`, `/status`, `/metrics` remain available alongside the `/v1` routes.
 
-The indexer persists to Postgres (run in Docker via `docker-compose.yml`) — `DATABASE_URL` in
-`.env` points at it. `make db-down` stops it (data preserved); `make db-reset` drops the volume for
-a clean re-sync. Unset `DATABASE_URL` to fall back to Ponder's embedded PGLite store.
+**6. Grant decrypt rights later** — the backfill demo. Amounts between *other* parties come back
+`unauthorized`; a partner can delegate decrypt rights to the holder after the fact, and the indexer
+backfills cleartext for the now-readable handles. The standalone [`grant/`](grant/) tool emits that grant
+— independent of `populate/`, runnable any time after deploy:
 
-> The deploy target reads keys and addresses from `.env`. The `Makefile` loads `.env` and exports
-> it into the environment before `cd contracts && forge script …`, so Forge sees the variables even
-> though `.env` lives at the repo root. Running the `forge` commands by hand from `contracts/` would not
-> pick up the root `.env` — use the `make` targets.
+```bash
+make grant-install   # once: install grant/ deps
+
+A=0x70997970C51812dc3A010C7d01b50e0d17dc79C8                  # alice
+curl "localhost:42069/v1/addresses/$A/transactions?limit=100" # before: alice<->bob amounts are "unauthorized"
+make grant                                                    # alice delegates decrypt rights to the holder
+curl "localhost:42069/v1/addresses/$A/transactions?limit=100" # after:  those amounts are now "decrypted"
+```
+
+`make grant ARGS=bob` grants from Bob instead; `make grant ARGS=0x<privkey>` from any address (its key
+signs); `make grant ARGS="alice --days=30"` sets a custom lifetime (default 365 days). Under the hood it
+calls `ACL.delegateForUserDecryption(holder, cUSD, expiration)`; the emitted `DelegatedForUserDecryption`
+event triggers the indexer's re-decryption sweep of every handle the delegator is authorized on.
+
+**Run the tests** (independent of the running stack — no node needed):
+
+```bash
+make test              # Solidity: forge test -vv (spins up host contracts in-process)
+cd indexer && npm test # TypeScript: vitest — happy path + unauthorized-not-dropped
+```
+
+### Notes
+
+The indexer persists to Postgres (run in Docker via `docker-compose.yml`) — `DATABASE_URL` in `.env`
+points at it. `make db-down` stops it (data preserved); `make db-reset` drops the volume for a clean
+re-sync. Unset `DATABASE_URL` to fall back to Ponder's embedded PGLite store.
+
+> The deploy target reads keys and addresses from `.env`. The `Makefile` loads `.env` and exports it
+> into the environment before `cd contracts && forge script …`, so Forge sees the variables even though
+> `.env` lives at the repo root. Running the `forge` commands by hand from `contracts/` would not pick up
+> the root `.env` — use the `make` targets.
 
 ## Events the indexer consumes
 
@@ -129,57 +166,3 @@ still indexed and returned, never silently dropped.
 - `GET /v1/health` → `{ status, chainTipBlock, indexedBlock, blocksBehind, pendingDecryptions }`.
 
 Errors use `{ error: { code, message } }`: `400` for a malformed address, `404` for an unknown one.
-
-## Granting decrypt rights later (the backfill demo)
-
-The indexer can only decrypt what the holder is entitled to — so amounts between *other* parties come
-back `unauthorized`. A partner can grant the holder decryption rights after the fact via the fhEVM ACL,
-and the indexer backfills cleartext for the now-readable handles. The standalone [`grant/`](grant/) tool
-emits that grant; it is independent of `populate/` and can be run at any time after deploy.
-
-```bash
-make grant-install      # once: install grant/ deps
-make grant              # Alice delegates decrypt rights to the indexer holder (default)
-make grant ARGS=bob     # Bob instead
-make grant ARGS=0x<privkey>          # any address (its key signs the grant)
-make grant ARGS="alice --days=30"    # custom delegation lifetime (default 365 days)
-```
-
-Demo flow with the indexer running:
-
-```bash
-A=0x70997970C51812dc3A010C7d01b50e0d17dc79C8     # alice
-curl "localhost:42069/v1/addresses/$A/transactions?limit=100"   # before: alice<->bob amounts are "unauthorized"
-make grant                                                       # alice grants to the holder
-curl "localhost:42069/v1/addresses/$A/transactions?limit=100"   # after:  those amounts are now "decrypted"
-```
-
-Under the hood `grant/` calls `ACL.delegateForUserDecryption(holder, cUSD, expiration)` signed by the
-delegator; that emits `DelegatedForUserDecryption`, which the indexer's ACL handler turns into a
-re-decryption sweep of every handle the delegator is authorized on.
-
-## Why the event mix is a TypeScript script (a forge-script footgun)
-
-The whole shield / confidential-transfer / unshield mix is generated by a standalone TypeScript script in
-[`populate/`](populate/) — not a Forge script — because of an FHE-handle footgun.
-
-A Forge *broadcast* script simulates the whole run, then sends the txs; any tx whose calldata references
-an FHE handle produced by an earlier tx (e.g. `confidentialTransfer(to, balanceHandle)`) captures the
-**simulation-time** handle, which does not match the handle the executor derives on-chain, so the ACL
-check reverts. (Shields are the exception — `wrap(to, amount)` takes a cleartext amount and
-trivially-encrypts it inside the token, with no cross-tx handle dependency.) Confidential transfers and
-unshield need fresh per-tx encrypted inputs / decryption proofs — exactly what the `@zama-fhe/sdk`
-produces against the cleartext relayer.
-
-So `populate/` drives the SDK (`RelayerCleartext` transport, no off-chain relayer needed):
-
-```bash
-make populate-install   # once: install populate/ deps
-make populate           # shields + 27 confidential transfers + 3 unshields via the SDK
-```
-
-It produces the scenario from `indexer-impl-task.md`: user1 (alice) — 2 shields, 5 spends → user2,
-7 spends → user3, 1 unshield; user2 (bob) — 1 shield, 5 spends → user3, 10 spends → user1, 2 unshields;
-user3 (the indexer holder) only receives. Each unshield is asserted to have released the underlying mUSD
-(the 2-step `unwrap` → `finalizeUnwrap` actually completed). It is self-contained — it does its own
-shields — and only requires `make host && make deploy` done with the printed addresses copied into `.env`.
