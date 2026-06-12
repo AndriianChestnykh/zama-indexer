@@ -13,11 +13,14 @@ I wrote myself:
 - `populate script`: It is a TypeScript that I use to populate confidential token with some test data including confidential transactions.
 - `grant script`: It is a TypeScript that I use to grant a ACL access from users to indexer holder. Useful for testing the backfill flow and demo.
 
-## What I cut
+Both grant and populate scripts are complex and have npm dependencies but enable good testing of confidential token and the decryptor.
+
+## What I cut & trade-offs
 
 - There is no retry scheduler for `pending` handles — they are only re-tried on the next `DelegatedForUserDecryption` event;
 - Rate-limiting and authentication on the read API were cut. 
 - Throttling on the Zama deryption API calls was cut.
+- Throttling or optimisation of Blockchain api calls was cut as not essential for the local EVM node
 - The `populate`, `grant` scenarious and Quick Start guide only tests the local fhEVM stack; there is no Sepolia support yet (though Sepolia is not mandatory in the brief but just an option)
 
 ## Where I'd push back on the brief
