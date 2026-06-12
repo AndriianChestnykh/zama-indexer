@@ -8,7 +8,8 @@
 // (the EIP-712 fields are ignored), only the holder's *address*. On Sepolia you would swap
 // `RelayerCleartext` for `RelayerNode` and pass a real keypair+signature; the call sites below stay
 // the same. See implementation-plan.md §"Decryption module".
-import { RelayerCleartext, hardhatCleartextConfig } from "@zama-fhe/sdk/cleartext";
+import { RelayerCleartext } from "@zama-fhe/sdk/cleartext";
+import { hardhat } from "@zama-fhe/sdk/chains";
 import type { Address, Hex } from "viem";
 import { env } from "./config.js";
 
@@ -33,7 +34,7 @@ function isUnauthorized(err: unknown): boolean {
 }
 
 class Decryptor {
-  readonly #relayer = new RelayerCleartext({ ...hardhatCleartextConfig, network: env.rpcUrl });
+  readonly #relayer = new RelayerCleartext({ ...hardhat, network: env.rpcUrl });
   readonly #token = env.confidentialUsdAddress;
   readonly #holder = env.holderAddress;
   /** Terminal cleartext results, so repeated handles (balances especially) don't re-hit the chain. */
@@ -63,7 +64,7 @@ class Decryptor {
     return this.#read(
       () =>
         this.#relayer.userDecrypt({
-          handles: [handle],
+          encryptedValues: [handle],
           contractAddress: this.#token,
           signerAddress: this.#holder,
           ...UNUSED_CRYPTO,
@@ -76,7 +77,7 @@ class Decryptor {
     return this.#read(
       () =>
         this.#relayer.delegatedUserDecrypt({
-          handles: [handle],
+          encryptedValues: [handle],
           contractAddress: this.#token,
           delegatorAddress: delegator as Address,
           delegateAddress: this.#holder,
