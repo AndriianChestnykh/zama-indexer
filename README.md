@@ -138,6 +138,17 @@ re-sync. Unset `DATABASE_URL` to fall back to Ponder's embedded PGLite store.
 > `.env` lives at the repo root. Running the `forge` commands by hand from `contracts/` would not pick up
 > the root `.env` — use the `make` targets.
 
+## Why populate is a TypeScript script (a forge-script footgun)
+
+The event mix (`make populate`, step 3 above) is driven by a TypeScript script that calls the
+`@zama-fhe/sdk`, not a Forge script. A Forge *broadcast* script simulates the whole run before sending,
+so any tx whose calldata references an FHE handle produced by an earlier tx (e.g.
+`confidentialTransfer(to, balanceHandle)`) captures the **simulation-time** handle, which doesn't match
+the one the executor derives on-chain — and the ACL check reverts. Confidential transfers and unshields
+need fresh per-tx encrypted inputs / decryption proofs, which the SDK produces against the cleartext
+relayer. (Shields are the exception: `wrap(to, amount)` takes a cleartext amount and trivially-encrypts
+it inside the token, with no cross-tx handle dependency.)
+
 ## Events the indexer consumes
 
 - `ConfidentialTransfer(from, to, euint64 amount)` — mint (shield, `from = 0x0`), transfer, burn (unshield, `to = 0x0`).
