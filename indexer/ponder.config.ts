@@ -13,6 +13,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config as loadEnv } from "dotenv";
 import { createConfig } from "ponder";
+import { AclAbi } from "./abis/AclAbi";
 import { ConfidentialUsdAbi } from "./abis/ConfidentialUsdAbi";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -33,6 +34,7 @@ function required(name: string): string {
 const LOCAL_CHAIN_ID = 31337;
 const rpcUrl = required("RPC_URL");
 const confidentialUsdAddress = required("CONFIDENTIAL_USD_ADDRESS") as `0x${string}`;
+const aclAddress = required("ACL_ADDRESS") as `0x${string}`;
 const startBlock = Number(process.env.INDEXER_START_BLOCK ?? "0");
 const pollingInterval = Number(process.env.POLL_INTERVAL_MS ?? "2000");
 
@@ -45,10 +47,19 @@ export default createConfig({
     },
   },
   contracts: {
+    // The confidential token: shields, transfers, and unshields.
     ConfidentialUSD: {
       chain: "local",
       abi: ConfidentialUsdAbi,
       address: confidentialUsdAddress,
+      startBlock,
+    },
+    // The fhEVM ACL: indexed only for user-decryption delegations, which let the holder
+    // backfill cleartext for handles it previously could not decrypt.
+    ACL: {
+      chain: "local",
+      abi: AclAbi,
+      address: aclAddress,
       startBlock,
     },
   },

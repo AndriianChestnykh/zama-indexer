@@ -5,9 +5,10 @@ amounts via the Zama SDK, and serves an ERC-20-style cleartext read API.
 
 This repo contains the **on-chain infrastructure** the indexer watches — a local
 [fhEVM](https://github.com/zama-ai/fhevm) stack (via [forge-fhevm](https://github.com/zama-ai/forge-fhevm))
-plus a deployed confidential token that emits real, decryptable events — and a scaffolded
-[Ponder](https://ponder.sh) **indexer/API service** (`indexer/`). The service currently exposes only
-health checks; the balance and transaction endpoints are the next step.
+plus a deployed confidential token that emits real, decryptable events — and the
+[Ponder](https://ponder.sh) **indexer/API service** (`indexer/`). The service indexes shields,
+confidential transfers, and unshields; decrypts every amount the indexer holder is entitled to (as a
+party to the transfer or via an ACL delegation); and serves a cleartext-where-available read API.
 
 All commands below are run **from the repo root** (the `Makefile` lives here and loads `.env`); the
 Foundry project itself lives in `contracts/`.
@@ -21,8 +22,12 @@ Foundry project itself lives in `contracts/`.
 | `contracts/script/DeployToken.s.sol` | Deploys both contracts. |
 | `contracts/test/ConfidentialUSD.t.sol` | Happy-path (shield → transfer → decrypt) + negative (no rights → denied). |
 | `populate/` | TypeScript script that drives the Zama SDK to emit the full shield/transfer/unshield mix. |
-| `indexer/` | Ponder indexer + HTTP API (one process). Currently health-checks-only; balance/tx endpoints are next. |
+| `indexer/` | Ponder indexer + HTTP API (one process): decrypts amounts and serves balance/transaction/health endpoints. |
 | `Makefile` | Runbook targets (`install`, `test`, `anvil`, `stack`, `populate`, `indexer`, …). |
+
+Inside `indexer/`: `ponder.schema.ts` (tables), `src/index.ts` (event handlers), `src/decryptor.ts`
+(the Zama-SDK decryption core), `src/api/index.ts` (read API), `src/logic.ts` + `test/` (pure helpers
+and their unit tests).
 
 `ConfidentialUSD` inherits `ZamaEthereumConfig`, which picks the fhEVM coprocessor/ACL/KMS addresses
 by **chainid** at construction (mainnet / Sepolia / local-31337). The same bytecode runs on the local
@@ -53,25 +58,39 @@ make stack            # = host + deploy (prints token addresses)
 # then copy the printed MOCK_USD_ADDRESS / CONFIDENTIAL_USD_ADDRESS into .env
 ```
 
-Run the tests (no node needed — they spin up the host contracts in-process):
+Run the tests:
 
 ```bash
-make test             # forge test -vv, inside contracts/
+make test                       # Solidity: forge test -vv, inside contracts/ (spins up host contracts in-process)
+cd indexer && npm test          # TypeScript: vitest — happy path + unauthorized-not-dropped
 ```
 
 Run the indexer + API service (needs Anvil up, the token deployed, and
-`CONFIDENTIAL_USD_ADDRESS` in `.env`; optionally `make populate` first for richer events):
+`CONFIDENTIAL_USD_ADDRESS` in `.env`; run `make populate` first so there are events to read):
 
 ```bash
 make indexer-install   # once: install indexer/ (Ponder) deps
 make db-up             # start the Dockerized Postgres (waits until healthy)
 make indexer           # ponder dev — indexes the chain AND serves the API in one process
-
-# Health checks (the only endpoints for now):
-curl localhost:42069/health   # 200 once the process is up
-curl localhost:42069/ready    # 200 once historical sync completes
-curl localhost:42069/status   # JSON indexing progress
 ```
+
+The service listens on `localhost:42069`. The partner-facing read API (using `HOLDER_ADDRESS` from
+`.env` as the example):
+
+```bash
+H=0x90F79bf6EB2c4f870365E785982E1f101E93b906   # the indexer holder
+
+# Current cleartext balance (or encrypted:true when the holder has no rights):
+curl "localhost:42069/v1/addresses/$H/balance"
+
+# Transfer history, cleartext where available, cursor-paginated:
+curl "localhost:42069/v1/addresses/$H/transactions?limit=25"
+
+# Health: how far behind the chain tip, and how many amounts are still undecrypted:
+curl "localhost:42069/v1/health"
+```
+
+Ponder's built-in `/health`, `/ready`, `/status`, `/metrics` remain available alongside the `/v1` routes.
 
 The indexer persists to Postgres (run in Docker via `docker-compose.yml`) — `DATABASE_URL` in
 `.env` points at it. `make db-down` stops it (data preserved); `make db-reset` drops the volume for
@@ -84,12 +103,32 @@ a clean re-sync. Unset `DATABASE_URL` to fall back to Ponder's embedded PGLite s
 
 ## Events the indexer consumes
 
-- `ConfidentialTransfer(from, to, euint64 amount)` — mint (shield, `from = 0x0`), transfer, burn (unshield).
-- `IERC7984ERC20Wrapper` unwrap events — `UnwrapRequested` / `UnwrapFinalized` (unshield is a 2-step async flow).
-- `AmountDisclosed`, `OperatorSet`.
+- `ConfidentialTransfer(from, to, euint64 amount)` — mint (shield, `from = 0x0`), transfer, burn (unshield, `to = 0x0`).
+- `UnwrapRequested` / `UnwrapFinalized` — unshield is a 2-step async flow; `UnwrapFinalized` carries the
+  cleartext amount publicly, so unshield amounts are always shown regardless of decryption rights.
+- ACL `DelegatedForUserDecryption` / `RevokedDelegationForUserDecryption` — a partner granting (or
+  revoking) the holder's decryption rights; a new grant triggers a backfill of previously-undecryptable amounts.
 
 The `amount` topic is an encrypted handle; cleartext is resolved off-chain by the indexer for the
 addresses that hold ACL rights (transfer parties, or a delegatee via `ACL.delegateForUserDecryption`).
+
+## Read API and the decryption model
+
+The indexer holds the decryption rights of a single address (`HOLDER_ADDRESS`). It can decrypt an
+amount only when that holder is **a party to the transfer** (`from`/`to`/`receiver`), is reading **its
+own balance**, or has been **delegated** rights via the ACL. Everything else stays encrypted — but is
+still indexed and returned, never silently dropped.
+
+- `GET /v1/addresses/:address/balance` → `{ address, balance, encrypted, amountStatus, handle, blockNumber, updatedAt }`.
+  `balance` is a decimal string, or `null` with `encrypted: true` when the holder can't decrypt it.
+- `GET /v1/addresses/:address/transactions?limit&cursor` → `{ address, items, nextCursor }`. Each item is
+  `{ id, type, direction, from, to, amount, amountStatus, state?, txHash, blockNumber, logIndex, timestamp }`.
+  `amount` is a decimal string or `null`; `amountStatus` is one of `decrypted | disclosed | unauthorized | pending`.
+  Unshields carry `state: "pending_finalization" | "finalized"` to surface the in-between state where the
+  ERC-7984 balance is already debited but the underlying ERC-20 has not yet been delivered.
+- `GET /v1/health` → `{ status, chainTipBlock, indexedBlock, blocksBehind, pendingDecryptions }`.
+
+Errors use `{ error: { code, message } }`: `400` for a malformed address, `404` for an unknown one.
 
 ## Why the event mix is a TypeScript script (a forge-script footgun)
 
@@ -111,7 +150,7 @@ make populate-install   # once: install populate/ deps
 make populate           # shields + 27 confidential transfers + 3 unshields via the SDK
 ```
 
-It produces the scenario from `task-notes.md`: user1 (alice) — 2 shields, 5 spends → user2,
+It produces the scenario from `indexer-impl-task.md`: user1 (alice) — 2 shields, 5 spends → user2,
 7 spends → user3, 1 unshield; user2 (bob) — 1 shield, 5 spends → user3, 10 spends → user1, 2 unshields;
 user3 (the indexer holder) only receives. Each unshield is asserted to have released the underlying mUSD
 (the 2-step `unwrap` → `finalizeUnwrap` actually completed). It is self-contained — it does its own
