@@ -14,18 +14,26 @@ import {
   unwrapFinalizedEvent,
   unwrapRequestedEvent,
 } from "ponder:schema";
+import { createPublicClient, http } from "viem";
 import type { Address, Hex } from "viem";
 import { ConfidentialUsdAbi } from "../abis/ConfidentialUsdAbi";
 import { env } from "./config.js";
 import { decryptor } from "./decryptor.js";
 import { ZERO_ADDRESS, classifyTransfer, eventId } from "./logic.js";
 
-// Ponder's per-event Context is a deep generic; the shared helpers below only touch `context.db`
-// and `context.client`, so we accept it loosely. The event handlers themselves stay fully typed.
-type Context = { db: any; client: any };
+// Ponder's per-event Context is a deep generic; the shared helpers below only touch `context.db`,
+// so we accept it loosely. The event handlers themselves stay fully typed.
+type Context = { db: any };
 
 const TOKEN = env.confidentialUsdAddress.toLowerCase();
 const HOLDER = env.holderAddress.toLowerCase();
+
+// A confidential balance is *current state*, not a per-block snapshot, so we read it at the latest
+// block via this dedicated client rather than Ponder's event-pinned `context.client`. The pinned
+// historical read can return a stale balance handle on the forge-fhevm stack — one that no longer
+// matches `confidentialBalanceOf` and that the holder can't decrypt even after an ACL grant, so the
+// stored balance would never resolve. Reading latest keeps the stored handle the live, decryptable one.
+const balanceClient = createPublicClient({ transport: http(env.rpcUrl) });
 
 /** Record a handle if unseen, then attempt to decrypt it (unless already known). */
 async function ingestHandle(context: Context, handle: Hex, block: bigint): Promise<void> {
@@ -58,7 +66,7 @@ async function refreshBalance(context: Context, address: Address, block: bigint,
   if (address.toLowerCase() === ZERO_ADDRESS) return;
   let handle: Hex;
   try {
-    handle = (await context.client.readContract({
+    handle = (await balanceClient.readContract({
       abi: ConfidentialUsdAbi,
       address: env.confidentialUsdAddress,
       functionName: "confidentialBalanceOf",
