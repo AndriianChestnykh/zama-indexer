@@ -53,7 +53,11 @@ Errors introduced:
 - The Claude Code introduced denormalisation to the DB schema: the cleartext was duplicated in `balance` or `transactions` tables along with the `fhe_handle` table
 - Subtle thing: Claude used `dotenv` package instead of using Node.Js native API to read environment variables (yet to fix)
 
+## Lite tests
+
+- The Screen recording in the repo introduces a happy-path. Events coming in procude correct cleartext coming out of the API (transactions endpoint)
+- Negative tests: The Screen Recording shows that before the index holder address is granted access to the token, no cleartext is returned.
+
 ## Out-of-time / not completed
 
-- No happy-path and negative path tests at the moment.
 - No SDK feedback at the moment.
